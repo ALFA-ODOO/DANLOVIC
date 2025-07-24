@@ -1,0 +1,31 @@
+[14/05/2025 16:35:28.92] Iniciando sincronización desde Odoo... 
+[2025-05-14 16:35:29.092314] Iniciando sincronización desde Odoo...
+2025-05-14 16:35:30.536398 - Conectado a Odoo con UID: 2
+2025-05-14 16:35:30.536398 - Buscando pedidos confirmados no sincronizados...
+2025-05-14 16:35:31.032438 - Se encontraron 1 pedidos para procesar.
+Resultado completo: ['CODIGO         ', '---------------', '112011692      ', '', '(1 rows affected)']
+2025-05-14 16:35:31.446448 - Código encontrado por MAIL en VT_CLIENTES: 112011692
+2025-05-14 16:35:31.447449 - Ejecutando procedimiento para pedido S00054...
+2025-05-14 16:35:31.447449 - SQL de cliente de Odoo para sp: SET NOCOUNT ON;
+DECLARE @pRes INT, @pMensaje NVARCHAR(250), @pIdCpte INT;
+EXEC sp_odoo_Alta_Comprobante '112011692', '', '14/05/2025', '', 'S00054', '0', 'NP', '9998', '', 'X', @pRes OUTPUT, @pMensaje OUTPUT, @pIdCpte OUTPUT;
+SELECT @pRes AS pRes, @pMensaje AS pMensaje, @pIdCpte AS pIdCpte;
+STDOUT del sqlcmd:
+[0] 'pRes        pMensaje                                                                                                                                                                                                                                                   pIdCpte    '
+[1] '----------- ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- -----------'
+[2] '         11 El Pedido se ha dado de alta con ‚xito                                                                                                                                                                                                                          199459'
+2025-05-14 16:35:31.525455 - ID del comprobante generado: 199459
+2025-05-14 16:35:31.694464 - El pedido tiene 3 ítems para insertar.
+2025-05-14 16:35:32.724524 - Insertando ítem Código: 'BIA992136' x 2.0 a 43295.83 (desc: 0%)
+✔️ Ítem insertado correctamente. Respuesta:
+
+2025-05-14 16:35:34.170608 - Insertando ítem Código: 'BO3710' x 2.0 a 169808.36 (desc: 0%)
+✔️ Ítem insertado correctamente. Respuesta:
+
+2025-05-14 16:35:34.424618 - Insertando ítem Código: 'Delivery_007' x 1.0 a 0.0 (desc: 0%)
+✔️ Ítem insertado correctamente. Respuesta:
+
+2025-05-14 16:35:34.504626 - Pedido S00054 procesado correctamente.
+2025-05-14 16:35:34.677632 - Pedido S00054 marcado como sincronizado en Odoo.
+2025-05-14 16:35:34.677632 - Proceso finalizado.
+[14/05/2025 16:35:34.69] Finalizó sincronización. 
