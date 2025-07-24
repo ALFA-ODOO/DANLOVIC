@@ -140,7 +140,8 @@ def procesar_lista(nombre_lista_sql):
 
     models.execute_kw(db, uid, password, "product.pricelist.item", "create", [{
         "pricelist_id": lista_principal_id,
-        "applied_on": "1_product",
+        # Use a global rule so no specific product is required
+        "applied_on": "3_global",
         "min_quantity": 0,
         "compute_price": "fixed",
         "fixed_price": 0.0,
