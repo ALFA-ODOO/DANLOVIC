@@ -55,7 +55,7 @@ print("\n💰 Importando listas de precios...")
 cursor.execute("SELECT IdArticulo, Nombre, Precio4 FROM V_MA_Precios WHERE TipoLista = 'V'")
 cols = [col[0] for col in cursor.description]
 precios_sql = [dict(zip(cols, map(limpiar, row))) for row in cursor.fetchall()]
-precios_sql = precios_sql[1335:]
+ 
 
 # Obtener moneda de todos los articulos en un solo paso
 a_monedas = {}

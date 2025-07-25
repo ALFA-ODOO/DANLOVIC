@@ -42,10 +42,7 @@ print("\n💰 Importando listas de precios...")
 cursor.execute("SELECT * FROM V_MA_Precios WHERE TipoLista = 'V'")
 cols = [col[0] for col in cursor.description]
 precios_sql = [dict(zip(cols, map(limpiar, row))) for row in cursor.fetchall()]
-# Solo procesar desde el registro 1030 en adelante
-precios_sql = precios_sql[1335:]  # índice 1029 porque empieza desde 0
-
-
+ 
 # Obtener todos los nombres de lista únicos del SQL
 nombres_listas_sql = set(precio['Nombre'] for precio in precios_sql)
 total_registros_precios = len(precios_sql)
