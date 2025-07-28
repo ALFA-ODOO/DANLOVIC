@@ -40,7 +40,7 @@ def limpiar(valor):
     return texto
 
 # --- Datos desde Alfa Gestión ---
-cursor.execute("SELECT IdArticulo, Nombre, Precio4 FROM V_MA_Precios WHERE TipoLista = 'V'")
+cursor.execute("SELECT IdArticulo, DescripcionArticulo, Precio4, IdLista, Nombre FROM VT_MA_PRECIOS_ARTICULOS WHERE TipoLista = 'V'")
 cols = [col[0] for col in cursor.description]
 precios_sql = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
