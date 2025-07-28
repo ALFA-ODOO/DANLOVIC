@@ -1,0 +1,23 @@
+# Archivos temporales y de log
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Archivos de Excel y CSV generados temporalmente
+*.xlsx
+*.csv
+
+# Carpetas temporales y de configuración local
+temp/
+.vscode/
+
+# Archivos específicos
+comparacion_precios.xlsx
+errores_carga_listas_precios.csv
+
+# Archivos de sistema (Windows/macOS)
+.DS_Store
+Thumbs.db
+desktop.ini
