@@ -1,12 +1,13 @@
-# sqlserver_config.py
+import os
 
-#SQL Server Native Client 10.0
-#ODBC Driver 17 for SQL Server
-
+# SQL Server connection settings
 sql_server = {
-    "server": "WIN-TUNPH1OHJM9\ALFANET",
-    "database": "DISTRIWALTERP",
-    "user": "DISTRIWALTERP",
-    "password": "DISTRIWALTERP",
-    "driver": "SQL Server Native Client 10.0"
+    "server": os.getenv("SQL_SERVER", "WIN-TUNPH1OHJM9\\ALFANET"),
+    "database": os.getenv("SQL_DATABASE", "DISTRIWALTERP"),
+    "user": os.getenv("SQL_USER"),
+    "password": os.getenv("SQL_PASSWORD"),
+    "driver": os.getenv("SQL_DRIVER", "SQL Server Native Client 10.0"),
 }
+
+if sql_server["user"] is None or sql_server["password"] is None:
+    raise EnvironmentError("SQL_USER and SQL_PASSWORD must be set in the environment")
