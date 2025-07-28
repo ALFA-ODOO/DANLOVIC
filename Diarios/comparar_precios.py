@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 """Comparar productos y precios entre Odoo y Alfa Gestión.
 
-Genera un archivo Excel con:
-- Productos faltantes en Odoo
-- Precios diferentes
-- Productos que están en Odoo pero no en Alfa
+Genera un archivo Excel con la información de precios proveniente de Alfa y
+los precios existentes en Odoo para cada producto y lista de precios.
 """
 
 import pyodbc
@@ -40,16 +38,26 @@ def limpiar(valor):
     return texto
 
 # --- Datos desde Alfa Gestión ---
-cursor.execute("SELECT IdArticulo, DescripcionArticulo, Precio4, IdLista, Nombre FROM VT_MA_PRECIOS_ARTICULOS WHERE TipoLista = 'V'")
+cursor.execute(
+    "SELECT IdArticulo, DescripcionArticulo, Precio4, IdLista, Nombre "
+    "FROM VT_MA_PRECIOS_ARTICULOS WHERE TipoLista = 'V'"
+)
 cols = [col[0] for col in cursor.description]
-precios_sql = [dict(zip(cols, row)) for row in cursor.fetchall()]
+rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
-precios_map = {
-    (limpiar(p['IdArticulo']), limpiar(p['Nombre'])): float(p['Precio4'] or 0)
-    for p in precios_sql
-}
+precios_sql = [
+    {
+        'IdArticulo': limpiar(r['IdArticulo']),
+        'DescripcionArticulo': limpiar(r['DescripcionArticulo']),
+        'Precio4': float(r['Precio4'] or 0),
+        'IdLista': limpiar(r['IdLista']),
+        'Nombre': limpiar(r['Nombre']),
+    }
+    for r in rows
+]
 
-codigos = list({codigo for codigo, _ in precios_map.keys()})
+# --- Productos existentes en Odoo ---
+codigos = list({p['IdArticulo'] for p in precios_sql})
 product_map = {}
 chunk_size = 80
 for i in range(0, len(codigos), chunk_size):
@@ -66,7 +74,8 @@ for i in range(0, len(codigos), chunk_size):
     for prod in productos:
         product_map[prod['default_code'].strip()] = prod['id']
 
-nombres_listas = {nombre for _, nombre in precios_map.keys()}
+# --- Listas de precios y precios en Odoo ---
+nombres_listas = {p['Nombre'] for p in precios_sql}
 odoo_pricelist_map = {}
 for nombre in nombres_listas:
     lista = models.execute_kw(
@@ -105,35 +114,23 @@ for nombre, lista_id in odoo_pricelist_map.items():
         if code:
             odoo_price_map[(code, nombre)] = float(item.get('fixed_price') or 0)
 
-faltantes_odoo = []
-precios_diferentes = []
-solo_odoo = []
+# --- Comparación y DataFrame final ---
+rows_comparacion = []
+for p in precios_sql:
+    key = (p['IdArticulo'], p['Nombre'])
+    rows_comparacion.append({
+        'IdArticulo': p['IdArticulo'],
+        'DescripcionArticulo': p['DescripcionArticulo'],
+        'Precio4': p['Precio4'],
+        'IdLista': p['IdLista'],
+        'Nombre': p['Nombre'],
+        'Existe_Odoo': p['IdArticulo'] in product_map,
+        'Precio_Odoo': odoo_price_map.get(key),
+    })
 
-for key, precio_alfa in precios_map.items():
-    codigo, nombre = key
-    if codigo not in product_map:
-        faltantes_odoo.append({'IdArticulo': codigo, 'Nombre': nombre, 'Precio_Alfa': precio_alfa})
-        continue
-    precio_odoo = odoo_price_map.get(key)
-    if precio_odoo is None:
-        faltantes_odoo.append({'IdArticulo': codigo, 'Nombre': nombre, 'Precio_Alfa': precio_alfa})
-    elif round(precio_odoo, 2) != round(precio_alfa, 2):
-        precios_diferentes.append({
-            'IdArticulo': codigo,
-            'Nombre': nombre,
-            'Precio_Alfa': precio_alfa,
-            'Precio_Odoo': precio_odoo
-        })
-
-for key, precio_odoo in odoo_price_map.items():
-    if key not in precios_map:
-        codigo, nombre = key
-        solo_odoo.append({'IdArticulo': codigo, 'Nombre': nombre, 'Precio_Odoo': precio_odoo})
-
-with pd.ExcelWriter('comparacion_precios.xlsx') as writer:
-    pd.DataFrame(faltantes_odoo).to_excel(writer, sheet_name='Faltantes_Odoo', index=False)
-    pd.DataFrame(precios_diferentes).to_excel(writer, sheet_name='Precios_Diferentes', index=False)
-    pd.DataFrame(solo_odoo).to_excel(writer, sheet_name='Solo_Odoo', index=False)
+df = pd.DataFrame(rows_comparacion)
+df.sort_values(['Nombre', 'IdArticulo'], inplace=True)
+df.to_excel('comparacion_precios.xlsx', index=False)
 
 cursor.close()
 sql_conn.close()
