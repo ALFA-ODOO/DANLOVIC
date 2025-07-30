@@ -58,7 +58,7 @@ cursor.execute("""
         a.IDARTICULO,
         a.DESCRIPCION,
         a.IDUNIDAD,
-        a.CODIGOBARRA,
+        LTRIM(RTRIM(a.CODIGOBARRA)) AS CODIGOBARRA,
         a.TasaIva,
         a.Moneda,
         a.PRECIO1,
@@ -95,7 +95,7 @@ for producto in productos_raw:
     activo = producto.get("SUSPENDIDO") != "1"
     venta_habilitada = producto.get("SUSPENDIDOV") != "1"
     compra_habilitada = producto.get("SUSPENDIDOC") != "1"
-    barcode = producto.get("CODIGOBARRA")
+    barcode = (producto.get("CODIGOBARRA") or "").strip()
     marca = producto.get("DescMarca") or producto.get("Marca")
     categoria_desc = (producto.get("DescRubro") or "").strip()
     ruta_imagen = os.path.join(carpeta_imagenes, f"{default_code}.jpg")
