@@ -94,8 +94,6 @@ for i, data in enumerate(productos_raw, 1):
                 )
                 sql_conn.commit()
 
-                sql_conn.commit()
-
                 productos_actualizados += 1
                 print("✅ Imagen actualizada")
             else:
