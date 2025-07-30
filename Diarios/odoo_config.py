@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # Configuration for connecting to Odoo
 url = os.getenv("ODOO_URL", "https://danlovic.odoo.com")

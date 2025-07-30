@@ -46,6 +46,8 @@ cursor.execute("""
         a.PRECIO1, 
         a.COSTO, 
         a.SUSPENDIDO, 
+        a.SUSPENDIDOC,
+        a.SUSPENDIDOV,    
         a.RutaImagen, 
         a.IDRUBRO, 
         f.Descripcion AS DescripcionFamilia         
@@ -60,6 +62,9 @@ cursor.execute("""
     and FhUltimoCosto >= CAST(DATEADD(DAY, -1, GETDATE()) AS DATE)
     order by IdArticulo 
 """)
+#a.SUSPENDIDOC = 1 es Suspendido para las compras si esta en 0 esta habilitado para compras
+#a.SUSPENDIDOV = 1 es Suspendido para las Ventas si esta en 0 esta habilitado para Ventas 
+#a.SUSPENDIDO = 1 es Suspendido para las compras y ventas, esta de baja 
 
 productos_raw = [dict(zip([col[0] for col in cursor.description], row)) for row in cursor.fetchall()]
 print(f"Total productos a procesar: {len(productos_raw)}")
@@ -72,13 +77,10 @@ for producto in productos_raw:
     default_code = producto.get("IDARTICULO").strip()
     name = producto.get("DESCRIPCION")
     tasaIva = producto.get("TasaIVA")
-    procedencia = producto.get("Procedencia")
-    presentacion = producto.get("Presentacion")
     unidad_id = MAP_UNIDADES.get(producto.get("IDUNIDAD"), MAP_UNIDADES.get("UN"))
     precio = float(producto.get("PRECIO1") or 0)
     costo = float(producto.get("COSTO") or 0)
     activo = producto.get("SUSPENDIDO") != "1"
-    familia_id = producto.get("IDFAMILIA")
     ruta_imagen = os.path.join(carpeta_imagenes, f"{default_code}.jpg")
 
     producto_vals = {
@@ -87,10 +89,6 @@ for producto in productos_raw:
         "uom_id": unidad_id,
         "standard_price": round(costo, 2),
         "list_price": round(precio, 2),
-        "x_idfamilia_familia": familia_id,
-        "x_tasa_iva": tasaIva,
-        "x_presentacion_producto": presentacion,
-        "x_procedencia": procedencia,
         "active": activo
     }
 
