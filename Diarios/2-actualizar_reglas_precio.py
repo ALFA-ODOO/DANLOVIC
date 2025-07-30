@@ -16,6 +16,22 @@ common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
 uid = common.authenticate(db, username, password, {})
 models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
 
+# Cargar todos los productos una vez para evitar búsquedas repetidas
+productos_odoo = models.execute_kw(
+    db,
+    uid,
+    password,
+    "product.product",
+    "search_read",
+    [[]],
+    {"fields": ["id", "default_code"], "limit": 0},
+)
+product_map = {
+    p["default_code"]: p["id"]
+    for p in productos_odoo
+    if p.get("default_code")
+}
+
 sql_conn = pyodbc.connect(
     f"DRIVER={sql_server['driver']};"
     f"SERVER={sql_server['server']};"
@@ -106,13 +122,10 @@ for id_lista_sql_grupo, precios_grupo in precios_por_lista:
         idart_precio = data.get("IdArticulo")
         print(f" -> 🔄️ Procesando registro {contador_productos_lista}/{total_productos_lista} (Total: {contador_registros_procesados}/{total_registros_sql}) - Producto: {idart_precio}", end="")
 
-        producto_ids = models.execute_kw(db, uid, password, "product.product", "search_read", [[['default_code', '=', idart_precio.strip()]]], {"fields": ["id"], "limit": 1})
-        if not producto_ids:
+        producto_variant_id = product_map.get(idart_precio.strip())
+        if not producto_variant_id:
             print(f" - ⚠️ Producto no encontrado en Odoo")
             continue
-
-        producto = producto_ids[0]
-        producto_variant_id = producto["id"]
 
         # Obtener la moneda del artículo
         cursor.execute("SELECT Moneda FROM v_ma_articulos WHERE LTRIM(RTRIM(IDARTICULO)) = ?", idart_precio.strip())
