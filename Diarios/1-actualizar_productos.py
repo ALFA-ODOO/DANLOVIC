@@ -9,17 +9,36 @@ import datetime
 from odoo_config import url, db, username, password
 from sqlserver_config import sql_server
 
-
 inicio_proceso = datetime.datetime.now()
-print(f"Inicio de la carga de artículos (sin categorías): {inicio_proceso.strftime('%Y-%m-%d %H:%M:%S')}")
+print(f"Inicio de la carga de artículos (con categorías): {inicio_proceso.strftime('%Y-%m-%d %H:%M:%S')}")
 
 MAP_UNIDADES = {"UN": 1, "KG": 15, "GR": 111, "LT": 12, "M": 8, "CM": 7, "MM": 6, "PA": 117, "CA": 116, "BL": 107, "CJ": 116, "PZ": 1}
-carpeta_imagenes = r"C:\Alfa Gestion\Imagenes\ImagenesWeb"
+carpeta_imagenes = r"C:\\Alfa Gestion\\Imagenes\\ImagenesWeb"
 
+# --- Conexión Odoo ---
 common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
 uid = common.authenticate(db, username, password, {})
 models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
 
+# Obtener categorías existentes una vez
+categorias_odoo = models.execute_kw(
+    db, uid, password,
+    'product.category', 'search_read',
+    [[]],
+    {'fields': ['id', 'name'], 'limit': 0}
+)
+map_categorias = {c['name'].strip().lower(): c['id'] for c in categorias_odoo}
+
+# Obtener productos existentes una vez para acelerar la búsqueda
+productos_existentes = models.execute_kw(
+    db, uid, password,
+    'product.template', 'search_read',
+    [[]],
+    {'fields': ['id', 'default_code'], 'limit': 0, 'context': {'active_test': False}}
+)
+map_productos = {p['default_code'].strip(): p['id'] for p in productos_existentes if p.get('default_code')}
+
+# --- Conexión SQL Server ---
 sql_conn = pyodbc.connect(
     f"DRIVER={sql_server['driver']};"
     f"SERVER={sql_server['server']};"
@@ -33,27 +52,29 @@ cursor.execute("SELECT TOP 1 MONEDA2, MONEDA3, MONEDA4, MONEDA5 FROM TA_COTIZACI
 tasas = cursor.fetchone()
 tasas_conversion = {"2": float(tasas[0] or 1), "3": float(tasas[1] or 1), "4": float(tasas[2] or 1), "5": float(tasas[3] or 1)}
 
+# --- Consulta de productos ---
 cursor.execute("""
-    SELECT 
-        a.IDARTICULO, 
-        a.DESCRIPCION, 
-        a.IDUNIDAD, 
-        a.CODIGOBARRA, 
-        a.TasaIva, 
-        a.Moneda, 
-        a.PRECIO1, 
-        a.COSTO, 
-        a.SUSPENDIDO, 
+    SELECT
+        a.IDARTICULO,
+        a.DESCRIPCION,
+        a.IDUNIDAD,
+        a.CODIGOBARRA,
+        a.TasaIva,
+        a.Moneda,
+        a.PRECIO1,
+        a.COSTO,
+        a.SUSPENDIDO,
         a.SUSPENDIDOC,
-        a.SUSPENDIDOV,    
-        a.RutaImagen, 
-        a.IDRUBRO           
-    FROM vt_ma_articulos a 
-    order by IdArticulo 
+        a.SUSPENDIDOV,
+        a.RutaImagen,
+        a.DescRubro,
+        a.DescMarca
+    FROM vt_ma_articulos a
+    ORDER BY IdArticulo
 """)
-#a.SUSPENDIDOC = 1 es Suspendido para las compras si esta en 0 esta habilitado para compras
-#a.SUSPENDIDOV = 1 es Suspendido para las Ventas si esta en 0 esta habilitado para Ventas 
-#a.SUSPENDIDO = 1 es Suspendido para las compras y ventas, esta de baja 
+# a.SUSPENDIDOC = 1 es Suspendido para las compras si esta en 0 esta habilitado para compras
+# a.SUSPENDIDOV = 1 es Suspendido para las Ventas si esta en 0 esta habilitado para Ventas
+# a.SUSPENDIDO = 1 es Suspendido para las compras y ventas, esta de baja
 
 productos_raw = [dict(zip([col[0] for col in cursor.description], row)) for row in cursor.fetchall()]
 print(f"Total productos a procesar: {len(productos_raw)}")
@@ -63,14 +84,29 @@ productos_creados = 0
 errores_productos = []
 
 for producto in productos_raw:
-    default_code = producto.get("IDARTICULO").strip()
+    default_code = producto.get("IDARTICULO", "").strip()
+    if not default_code:
+        continue
     name = producto.get("DESCRIPCION")
     tasaIva = producto.get("TasaIVA")
     unidad_id = MAP_UNIDADES.get(producto.get("IDUNIDAD"), MAP_UNIDADES.get("UN"))
     precio = float(producto.get("PRECIO1") or 0)
     costo = float(producto.get("COSTO") or 0)
     activo = producto.get("SUSPENDIDO") != "1"
+    venta_habilitada = producto.get("SUSPENDIDOV") != "1"
+    compra_habilitada = producto.get("SUSPENDIDOC") != "1"
+    barcode = producto.get("CODIGOBARRA")
+    marca = producto.get("DescMarca") or producto.get("Marca")
+    categoria_desc = (producto.get("DescRubro") or "").strip()
     ruta_imagen = os.path.join(carpeta_imagenes, f"{default_code}.jpg")
+
+    categoria_id = None
+    if categoria_desc:
+        key = categoria_desc.lower()
+        categoria_id = map_categorias.get(key)
+        if not categoria_id:
+            categoria_id = models.execute_kw(db, uid, password, 'product.category', 'create', [{'name': categoria_desc}])
+            map_categorias[key] = categoria_id
 
     producto_vals = {
         "name": name,
@@ -78,22 +114,31 @@ for producto in productos_raw:
         "uom_id": unidad_id,
         "standard_price": round(costo, 2),
         "list_price": round(precio, 2),
-        "active": activo
+        "active": activo,
+        "sale_ok": venta_habilitada,
+        "purchase_ok": compra_habilitada,
     }
 
-    # Agregar imagen si existe
+    if categoria_id:
+        producto_vals["categ_id"] = categoria_id
+    if barcode:
+        producto_vals["barcode"] = barcode
+    if marca:
+        producto_vals["x_marca"] = marca
+
     if os.path.exists(ruta_imagen):
         with open(ruta_imagen, "rb") as img_file:
             producto_vals["image_1920"] = base64.b64encode(img_file.read()).decode("utf-8")
 
     try:
-        existe = models.execute_kw(db, uid, password, "product.template", "search", [[['default_code', '=', default_code]]], {"context": {"active_test": False}})
-        if existe:
-            models.execute_kw(db, uid, password, "product.template", "write", [existe, producto_vals])
+        producto_id = map_productos.get(default_code)
+        if producto_id:
+            models.execute_kw(db, uid, password, "product.template", "write", [[producto_id], producto_vals])
             productos_actualizados += 1
-            print(f" Actualizado (ID: {existe[0]}) - {name}")
+            print(f" Actualizado (ID: {producto_id}) - {name}")
         else:
             new_product_id = models.execute_kw(db, uid, password, "product.template", "create", [producto_vals])
+            map_productos[default_code] = new_product_id
             productos_creados += 1
             print(f" Creado (ID: {new_product_id}) - {name}")
 
