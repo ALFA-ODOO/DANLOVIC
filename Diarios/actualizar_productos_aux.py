@@ -58,7 +58,7 @@ cursor.execute("""
         AND p.TipoLista = 'V'
     )
     AND a.Procedencia > '0' 
-    ORDER BY a.IDARTICULO where idarticulo = '                   014022'
+    ORDER BY a.IDARTICULO
 """)
 
 productos_raw = [dict(zip([col[0] for col in cursor.description], row)) for row in cursor.fetchall()]
