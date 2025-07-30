@@ -60,7 +60,7 @@ def get_sql_daily_data(cursor):
     sql_query = """
     SELECT ltrim(rtrim(a.idarticulo)) as idarticulo , a.iddeposito, b.STOCK , PUNTOPEDIDO
     FROM v_mv_stock a inner join STK_MA_ARTICULOS b on a.IDArticulo = b.IDARTICULO and a.IDDEPOSITO = b.DEPOSITO
-    WHERE fecha >= 01/01/20020 group by a.idarticulo, iddeposito,STOCK,  PUNTOPEDIDO """
+    WHERE fecha >= 01/01/2020 group by a.idarticulo, iddeposito,STOCK,  PUNTOPEDIDO """
     #CAST(GETDATE() AS DATE) AND fecha < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
     
 
