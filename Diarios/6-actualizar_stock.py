@@ -104,6 +104,22 @@ def update_odoo_daily_stock():
         return
     stock_location_id = stock_location_ids[0]
 
+    # Cargar todos los productos activos para mapear default_code -> id
+    productos_odoo = models.execute_kw(
+        db,
+        uid,
+        password,
+        "product.product",
+        "search_read",
+        [[["active", "=", True]]],
+        {"fields": ["id", "default_code"], "limit": 0},
+    )
+    product_map = {
+        p["default_code"]: p["id"]
+        for p in productos_odoo
+        if p.get("default_code")
+    }
+
     logger.info(f"Procesando {len(sql_data)} productos con movimientos del día en SQL Server.")
 
     # --- Iterar sobre los productos con cambios del día desde SQL Server ---
@@ -115,19 +131,15 @@ def update_odoo_daily_stock():
         logger.info(f"Procesando IDARTICULO: {id_articulo_sql}, STOCK: {stock_sql}, PUNTOPEDIDO: {punto_pedido_sql} (desde datos diarios SQL).")
 
         try:
-            # Buscar el product.product por default_code
-            product_product_ids = models.execute_kw(
-                db, uid, password,
-                'product.product', 'search',
-                [[['default_code', '=', id_articulo_sql], ['active', '=', True]]] # Solo activos
-            )
+            # Buscar el product.product en el mapa cargado previamente
+            product_product_id = product_map.get(id_articulo_sql)
 
-            if not product_product_ids:
-                logger.warning(f"Producto con default_code '{id_articulo_sql}' (de SQL) no encontrado o archivado en Odoo. Saltando.")
+            if not product_product_id:
+                logger.warning(
+                    f"Producto con default_code '{id_articulo_sql}' (de SQL) no encontrado o archivado en Odoo. Saltando."
+                )
                 failed_count += 1
                 continue
-
-            product_product_id = product_product_ids[0]
 
             # Obtener el product.template_id asociado al product.product
             product_product_data = models.execute_kw(
