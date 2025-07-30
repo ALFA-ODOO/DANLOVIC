@@ -83,6 +83,11 @@ productos_actualizados = 0
 productos_creados = 0
 errores_productos = []
 
+# Batch creation accumulators
+BATCH_SIZE = 50
+batch_vals = []
+batch_info = []  # store (default_code, name) for logging and mapping
+
 for producto in productos_raw:
     default_code = producto.get("IDARTICULO", "").strip()
     if not default_code:
@@ -137,14 +142,33 @@ for producto in productos_raw:
             productos_actualizados += 1
             print(f" Actualizado (ID: {producto_id}) - {name}")
         else:
-            new_product_id = models.execute_kw(db, uid, password, "product.template", "create", [producto_vals])
-            map_productos[default_code] = new_product_id
-            productos_creados += 1
-            print(f" Creado (ID: {new_product_id}) - {name}")
+            batch_vals.append(producto_vals)
+            batch_info.append((default_code, name))
+            if len(batch_vals) >= BATCH_SIZE:
+                ids_creados = models.execute_kw(db, uid, password, "product.template", "create", batch_vals)
+                for (codigo, nombre), pid in zip(batch_info, ids_creados):
+                    map_productos[codigo] = pid
+                    productos_creados += 1
+                    print(f" Creado (ID: {pid}) - {nombre}")
+                batch_vals.clear()
+                batch_info.clear()
 
     except Exception as e:
         errores_productos.append({"IDARTICULO": default_code, "Descripcion": name, "Error": str(e)})
         print(f" Error procesando {default_code}: {e}")
+
+# Enviar cualquier producto pendiente de creación
+if batch_vals:
+    try:
+        ids_creados = models.execute_kw(db, uid, password, "product.template", "create", batch_vals)
+        for (codigo, nombre), pid in zip(batch_info, ids_creados):
+            map_productos[codigo] = pid
+            productos_creados += 1
+            print(f" Creado (ID: {pid}) - {nombre}")
+    except Exception as e:
+        for codigo, nombre in batch_info:
+            errores_productos.append({"IDARTICULO": codigo, "Descripcion": nombre, "Error": str(e)})
+        print(f" Error procesando lote final: {e}")
 
 cursor.close()
 sql_conn.close()
