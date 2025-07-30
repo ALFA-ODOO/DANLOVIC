@@ -38,28 +38,17 @@ cursor.execute("""
         a.IDARTICULO, 
         a.DESCRIPCION, 
         a.IDUNIDAD, 
-        a.IDFAMILIA, 
+        a.CODIGOBARRA, 
         a.TasaIva, 
         a.Moneda, 
-        a.IDTIPO,
-        a.Procedencia, 
         a.PRECIO1, 
         a.COSTO, 
         a.SUSPENDIDO, 
         a.SUSPENDIDOC,
         a.SUSPENDIDOV,    
         a.RutaImagen, 
-        a.IDRUBRO, 
-        f.Descripcion AS DescripcionFamilia         
-    FROM v_ma_articulos a 
-    LEFT JOIN V_TA_Familias f ON a.IDFAMILIA = f.IdFamilia
-    WHERE EXISTS (
-        SELECT 1 
-        FROM V_MA_Precios p 
-        WHERE p.IDARTICULO = a.IDARTICULO 
-        AND p.TipoLista = 'V'
-    )
-    and FhUltimoCosto >= CAST(DATEADD(DAY, -1, GETDATE()) AS DATE)
+        a.IDRUBRO           
+    FROM vt_ma_articulos a 
     order by IdArticulo 
 """)
 #a.SUSPENDIDOC = 1 es Suspendido para las compras si esta en 0 esta habilitado para compras
