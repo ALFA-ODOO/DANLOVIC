@@ -145,7 +145,7 @@ for producto in productos_raw:
             batch_vals.append(producto_vals)
             batch_info.append((default_code, name))
             if len(batch_vals) >= BATCH_SIZE:
-                ids_creados = models.execute_kw(db, uid, password, "product.template", "create", batch_vals)
+                ids_creados = models.execute_kw(db, uid, password, "product.template", "create", [batch_vals])
                 for (codigo, nombre), pid in zip(batch_info, ids_creados):
                     map_productos[codigo] = pid
                     productos_creados += 1
@@ -160,7 +160,7 @@ for producto in productos_raw:
 # Enviar cualquier producto pendiente de creación
 if batch_vals:
     try:
-        ids_creados = models.execute_kw(db, uid, password, "product.template", "create", batch_vals)
+        ids_creados = models.execute_kw(db, uid, password, "product.template", "create", [batch_vals])
         for (codigo, nombre), pid in zip(batch_info, ids_creados):
             map_productos[codigo] = pid
             productos_creados += 1
