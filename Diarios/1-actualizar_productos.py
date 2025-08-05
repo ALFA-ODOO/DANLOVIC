@@ -128,8 +128,7 @@ for producto in productos_raw:
         producto_vals["categ_id"] = categoria_id
     if barcode:
         producto_vals["barcode"] = barcode
-    if marca:
-        producto_vals["x_marca"] = marca
+
 
     if os.path.exists(ruta_imagen):
         with open(ruta_imagen, "rb") as img_file:
