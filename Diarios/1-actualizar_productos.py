@@ -5,6 +5,8 @@ import base64
 import os
 import pandas as pd
 import datetime
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 from odoo_config import url, db, username, password
 from sqlserver_config import sql_server
@@ -85,16 +87,20 @@ productos_creados = 0
 errores_productos = []
 
 # Batch creation accumulators
-BATCH_SIZE = 50
+BATCH_SIZE = 20
 batch_vals = []
 batch_info = []  # store (default_code, name, barcode) for logging and mapping
 
-for producto in productos_raw:
+lock = threading.Lock()
+
+
+def procesar_producto(producto):
+    global productos_actualizados
     default_code = producto.get("IDARTICULO", "").strip()
     if not default_code:
-        continue
+        return
+
     name = producto.get("DESCRIPCION")
-    tasaIva = producto.get("TasaIVA")
     unidad_id = MAP_UNIDADES.get(producto.get("IDUNIDAD"), MAP_UNIDADES.get("UN"))
     precio = float(producto.get("PRECIO1") or 0)
     costo = float(producto.get("COSTO") or 0)
@@ -102,21 +108,49 @@ for producto in productos_raw:
     venta_habilitada = producto.get("SUSPENDIDOV") != "1"
     compra_habilitada = producto.get("SUSPENDIDOC") != "1"
     barcode = (producto.get("CODIGOBARRA") or "").strip()
-    if barcode and barcode in map_barcodes and map_barcodes[barcode] != map_productos.get(default_code):
-        errores_productos.append({"IDARTICULO": default_code, "Descripcion": name, "Error": f"Código de barras {barcode} ya asignado"})
+
+    with lock:
+        existing_id = map_productos.get(default_code)
+        barcode_conflict = (
+            barcode
+            and barcode in map_barcodes
+            and map_barcodes[barcode] != existing_id
+        )
+
+    if barcode_conflict:
+        with lock:
+            errores_productos.append({
+                "IDARTICULO": default_code,
+                "Descripcion": name,
+                "Error": f"Código de barras {barcode} ya asignado",
+            })
         print(f" Código de barras {barcode} ya está asignado a otro producto. Se omite para {default_code}")
         barcode = ""
-    marca = producto.get("DescMarca") or producto.get("Marca")
+
     categoria_desc = (producto.get("DescRubro") or "").strip()
     ruta_imagen = os.path.join(carpeta_imagenes, f"{default_code}.jpg")
 
     categoria_id = None
     if categoria_desc:
         key = categoria_desc.lower()
-        categoria_id = map_categorias.get(key)
+        with lock:
+            categoria_id = map_categorias.get(key)
         if not categoria_id:
-            categoria_id = models.execute_kw(db, uid, password, 'product.category', 'create', [{'name': categoria_desc}])
-            map_categorias[key] = categoria_id
+            try:
+                new_id = models.execute_kw(
+                    db, uid, password, 'product.category', 'create', [{'name': categoria_desc}]
+                )
+                with lock:
+                    map_categorias[key] = new_id
+                    categoria_id = new_id
+            except Exception as e:
+                with lock:
+                    errores_productos.append({
+                        "IDARTICULO": default_code,
+                        "Descripcion": name,
+                        "Error": f"Error creando categoría: {e}",
+                    })
+                return
 
     producto_vals = {
         "name": name,
@@ -134,51 +168,70 @@ for producto in productos_raw:
     if barcode:
         producto_vals["barcode"] = barcode
 
-
     if os.path.exists(ruta_imagen):
         with open(ruta_imagen, "rb") as img_file:
             producto_vals["image_1920"] = base64.b64encode(img_file.read()).decode("utf-8")
 
     try:
-        producto_id = map_productos.get(default_code)
-        if producto_id:
-            models.execute_kw(db, uid, password, "product.template", "write", [[producto_id], producto_vals])
-            productos_actualizados += 1
-            if barcode:
-                map_barcodes[barcode] = producto_id
-            print(f" Actualizado (ID: {producto_id}) - {name}")
+        if existing_id:
+            models.execute_kw(
+                db, uid, password, "product.template", "write", [[existing_id], producto_vals]
+            )
+            with lock:
+                productos_actualizados += 1
+                if barcode:
+                    map_barcodes[barcode] = existing_id
+            print(f" Actualizado (ID: {existing_id}) - {name}")
         else:
-            batch_vals.append(producto_vals)
-            batch_info.append((default_code, name, barcode))
-            if len(batch_vals) >= BATCH_SIZE:
-                ids_creados = models.execute_kw(db, uid, password, "product.template", "create", [batch_vals])
-                for (codigo, nombre, bc), pid in zip(batch_info, ids_creados):
-                    map_productos[codigo] = pid
-                    if bc:
-                        map_barcodes[bc] = pid
-                    productos_creados += 1
-                    print(f" Creado (ID: {pid}) - {nombre}")
-                batch_vals.clear()
-                batch_info.clear()
-
+            create_vals = None
+            create_info = None
+            with lock:
+                batch_vals.append(producto_vals)
+                batch_info.append((default_code, name, barcode))
+                if len(batch_vals) >= BATCH_SIZE:
+                    create_vals = list(batch_vals)
+                    create_info = list(batch_info)
+                    batch_vals.clear()
+                    batch_info.clear()
+            if create_vals:
+                _crear_batch(create_vals, create_info)
     except Exception as e:
-        errores_productos.append({"IDARTICULO": default_code, "Descripcion": name, "Error": str(e)})
+        with lock:
+            errores_productos.append({"IDARTICULO": default_code, "Descripcion": name, "Error": str(e)})
         print(f" Error procesando {default_code}: {e}")
 
-# Enviar cualquier producto pendiente de creación
-if batch_vals:
+
+def _crear_batch(valores, info):
+    global productos_creados
     try:
-        ids_creados = models.execute_kw(db, uid, password, "product.template", "create", [batch_vals])
-        for (codigo, nombre, bc), pid in zip(batch_info, ids_creados):
-            map_productos[codigo] = pid
-            if bc:
-                map_barcodes[bc] = pid
-            productos_creados += 1
+        ids_creados = models.execute_kw(db, uid, password, "product.template", "create", [valores])
+        with lock:
+            for (codigo, nombre, bc), pid in zip(info, ids_creados):
+                map_productos[codigo] = pid
+                if bc:
+                    map_barcodes[bc] = pid
+                productos_creados += 1
+        for (codigo, nombre, _), pid in zip(info, ids_creados):
             print(f" Creado (ID: {pid}) - {nombre}")
     except Exception as e:
-        for codigo, nombre, _ in batch_info:
-            errores_productos.append({"IDARTICULO": codigo, "Descripcion": nombre, "Error": str(e)})
-        print(f" Error procesando lote final: {e}")
+        with lock:
+            for codigo, nombre, _ in info:
+                errores_productos.append({"IDARTICULO": codigo, "Descripcion": nombre, "Error": str(e)})
+        print(f" Error procesando lote: {e}")
+
+
+with ThreadPoolExecutor(max_workers=5) as executor:
+    executor.map(procesar_producto, productos_raw)
+
+# Enviar cualquier producto pendiente de creación
+with lock:
+    remaining_vals = list(batch_vals)
+    remaining_info = list(batch_info)
+    batch_vals.clear()
+    batch_info.clear()
+
+if remaining_vals:
+    _crear_batch(remaining_vals, remaining_info)
 
 cursor.close()
 sql_conn.close()
