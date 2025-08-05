@@ -34,9 +34,10 @@ productos_existentes = models.execute_kw(
     db, uid, password,
     'product.template', 'search_read',
     [[]],
-    {'fields': ['id', 'default_code'], 'limit': 0, 'context': {'active_test': False}}
+    {'fields': ['id', 'default_code', 'barcode'], 'limit': 0, 'context': {'active_test': False}}
 )
 map_productos = {p['default_code'].strip(): p['id'] for p in productos_existentes if p.get('default_code')}
+map_barcodes = {p['barcode'].strip(): p['id'] for p in productos_existentes if p.get('barcode')}
 
 # --- Conexión SQL Server ---
 sql_conn = pyodbc.connect(
@@ -86,7 +87,7 @@ errores_productos = []
 # Batch creation accumulators
 BATCH_SIZE = 50
 batch_vals = []
-batch_info = []  # store (default_code, name) for logging and mapping
+batch_info = []  # store (default_code, name, barcode) for logging and mapping
 
 for producto in productos_raw:
     default_code = producto.get("IDARTICULO", "").strip()
@@ -101,6 +102,10 @@ for producto in productos_raw:
     venta_habilitada = producto.get("SUSPENDIDOV") != "1"
     compra_habilitada = producto.get("SUSPENDIDOC") != "1"
     barcode = (producto.get("CODIGOBARRA") or "").strip()
+    if barcode and barcode in map_barcodes and map_barcodes[barcode] != map_productos.get(default_code):
+        errores_productos.append({"IDARTICULO": default_code, "Descripcion": name, "Error": f"Código de barras {barcode} ya asignado"})
+        print(f" Código de barras {barcode} ya está asignado a otro producto. Se omite para {default_code}")
+        barcode = ""
     marca = producto.get("DescMarca") or producto.get("Marca")
     categoria_desc = (producto.get("DescRubro") or "").strip()
     ruta_imagen = os.path.join(carpeta_imagenes, f"{default_code}.jpg")
@@ -139,14 +144,18 @@ for producto in productos_raw:
         if producto_id:
             models.execute_kw(db, uid, password, "product.template", "write", [[producto_id], producto_vals])
             productos_actualizados += 1
+            if barcode:
+                map_barcodes[barcode] = producto_id
             print(f" Actualizado (ID: {producto_id}) - {name}")
         else:
             batch_vals.append(producto_vals)
-            batch_info.append((default_code, name))
+            batch_info.append((default_code, name, barcode))
             if len(batch_vals) >= BATCH_SIZE:
                 ids_creados = models.execute_kw(db, uid, password, "product.template", "create", [batch_vals])
-                for (codigo, nombre), pid in zip(batch_info, ids_creados):
+                for (codigo, nombre, bc), pid in zip(batch_info, ids_creados):
                     map_productos[codigo] = pid
+                    if bc:
+                        map_barcodes[bc] = pid
                     productos_creados += 1
                     print(f" Creado (ID: {pid}) - {nombre}")
                 batch_vals.clear()
@@ -160,12 +169,14 @@ for producto in productos_raw:
 if batch_vals:
     try:
         ids_creados = models.execute_kw(db, uid, password, "product.template", "create", [batch_vals])
-        for (codigo, nombre), pid in zip(batch_info, ids_creados):
+        for (codigo, nombre, bc), pid in zip(batch_info, ids_creados):
             map_productos[codigo] = pid
+            if bc:
+                map_barcodes[bc] = pid
             productos_creados += 1
             print(f" Creado (ID: {pid}) - {nombre}")
     except Exception as e:
-        for codigo, nombre in batch_info:
+        for codigo, nombre, _ in batch_info:
             errores_productos.append({"IDARTICULO": codigo, "Descripcion": nombre, "Error": str(e)})
         print(f" Error procesando lote final: {e}")
 
