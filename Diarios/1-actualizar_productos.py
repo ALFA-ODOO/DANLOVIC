@@ -44,15 +44,32 @@ categorias_odoo = _models_initial.execute_kw(
 )
 map_categorias = {c['name'].strip().lower(): c['id'] for c in categorias_odoo}
 
-# Obtener productos existentes una vez para acelerar la búsqueda
+# Obtener productos existentes (nivel variante) para acelerar la búsqueda
+# Usamos product.product para incluir referencias y códigos de barras
+# definidos a nivel de variante y mapearlos a la plantilla correspondiente.
 productos_existentes = _models_initial.execute_kw(
-    db, uid, password,
-    'product.template', 'search_read',
+    db,
+    uid,
+    password,
+    "product.product",
+    "search_read",
     [[]],
-    {'fields': ['id', 'default_code', 'barcode'], 'limit': 0, 'context': {'active_test': False}}
+    {
+        "fields": ["id", "product_tmpl_id", "default_code", "barcode"],
+        "limit": 0,
+        "context": {"active_test": False},
+    },
 )
-map_productos = {p['default_code'].strip(): p['id'] for p in productos_existentes if p.get('default_code')}
-map_barcodes = {p['barcode'].strip(): p['id'] for p in productos_existentes if p.get('barcode')}
+map_productos = {
+    p["default_code"].strip(): p["product_tmpl_id"][0]
+    for p in productos_existentes
+    if p.get("default_code")
+}
+map_barcodes = {
+    p["barcode"].strip(): p["product_tmpl_id"][0]
+    for p in productos_existentes
+    if p.get("barcode")
+}
 
 # --- Conexión SQL Server ---
 sql_conn = pyodbc.connect(
