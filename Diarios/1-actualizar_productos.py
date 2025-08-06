@@ -20,10 +20,23 @@ carpeta_imagenes = r"C:\\Alfa Gestion\\Imagenes\\ImagenesWeb"
 # --- Conexión Odoo ---
 common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
 uid = common.authenticate(db, username, password, {})
-models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
+# La instancia de ServerProxy no es thread-safe, por lo que se crea una
+# única para las operaciones iniciales y se generan nuevas por hilo cuando
+# se procesan los productos.
+_models_initial = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
+
+
+thread_local = threading.local()
+
+
+def get_models():
+    """Devuelve un proxy de modelos por hilo para evitar errores de concurrencia."""
+    if not hasattr(thread_local, "models"):
+        thread_local.models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
+    return thread_local.models
 
 # Obtener categorías existentes una vez
-categorias_odoo = models.execute_kw(
+categorias_odoo = _models_initial.execute_kw(
     db, uid, password,
     'product.category', 'search_read',
     [[]],
@@ -32,7 +45,7 @@ categorias_odoo = models.execute_kw(
 map_categorias = {c['name'].strip().lower(): c['id'] for c in categorias_odoo}
 
 # Obtener productos existentes una vez para acelerar la búsqueda
-productos_existentes = models.execute_kw(
+productos_existentes = _models_initial.execute_kw(
     db, uid, password,
     'product.template', 'search_read',
     [[]],
@@ -114,18 +127,23 @@ def procesar_producto(producto):
         barcode_conflict = (
             barcode
             and barcode in map_barcodes
-            and map_barcodes[barcode] != existing_id
+            and (
+                map_barcodes[barcode] is None or map_barcodes[barcode] != existing_id
+            )
         )
-
-    if barcode_conflict:
-        with lock:
+        if barcode_conflict:
             errores_productos.append({
                 "IDARTICULO": default_code,
                 "Descripcion": name,
                 "Error": f"Código de barras {barcode} ya asignado",
             })
-        print(f" Código de barras {barcode} ya está asignado a otro producto. Se omite para {default_code}")
-        barcode = ""
+            print(
+                f" Código de barras {barcode} ya está asignado a otro producto. Se omite para {default_code}"
+            )
+            barcode = ""
+        elif not existing_id and barcode:
+            # Reservar el código de barras para evitar duplicados en lotes concurrentes
+            map_barcodes[barcode] = None
 
     categoria_desc = (producto.get("DescRubro") or "").strip()
     ruta_imagen = os.path.join(carpeta_imagenes, f"{default_code}.jpg")
@@ -137,7 +155,7 @@ def procesar_producto(producto):
             categoria_id = map_categorias.get(key)
         if not categoria_id:
             try:
-                new_id = models.execute_kw(
+                new_id = get_models().execute_kw(
                     db, uid, password, 'product.category', 'create', [{'name': categoria_desc}]
                 )
                 with lock:
@@ -174,7 +192,7 @@ def procesar_producto(producto):
 
     try:
         if existing_id:
-            models.execute_kw(
+            get_models().execute_kw(
                 db, uid, password, "product.template", "write", [[existing_id], producto_vals]
             )
             with lock:
@@ -204,7 +222,7 @@ def procesar_producto(producto):
 def _crear_batch(valores, info):
     global productos_creados
     try:
-        ids_creados = models.execute_kw(db, uid, password, "product.template", "create", [valores])
+        ids_creados = get_models().execute_kw(db, uid, password, "product.template", "create", [valores])
         with lock:
             for (codigo, nombre, bc), pid in zip(info, ids_creados):
                 map_productos[codigo] = pid
@@ -215,8 +233,10 @@ def _crear_batch(valores, info):
             print(f" Creado (ID: {pid}) - {nombre}")
     except Exception as e:
         with lock:
-            for codigo, nombre, _ in info:
+            for codigo, nombre, bc in info:
                 errores_productos.append({"IDARTICULO": codigo, "Descripcion": nombre, "Error": str(e)})
+                if bc:
+                    map_barcodes.pop(bc, None)
         print(f" Error procesando lote: {e}")
 
 
