@@ -134,9 +134,9 @@ def procesar_producto(producto):
     unidad_id = MAP_UNIDADES.get(producto.get("IDUNIDAD"), MAP_UNIDADES.get("UN"))
     precio = float(producto.get("PRECIO1") or 0)
     costo = float(producto.get("COSTO") or 0)
-    activo = producto.get("SUSPENDIDO") != "1"
-    venta_habilitada = producto.get("SUSPENDIDOV") != "1"
-    compra_habilitada = producto.get("SUSPENDIDOC") != "1"
+    activo = producto.get("SUSPENDIDO") != 1
+    venta_habilitada = producto.get("SUSPENDIDOV") != 1
+    compra_habilitada = producto.get("SUSPENDIDOC") != 1
     barcode = (producto.get("CODIGOBARRA") or "").strip()
 
     with lock:
