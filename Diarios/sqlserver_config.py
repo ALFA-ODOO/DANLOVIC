@@ -4,8 +4,8 @@ load_dotenv()
 
 # SQL Server connection settings
 sql_server = {
-    "server": os.getenv("SQL_SERVER", "WIN-TUNPH1OHJM9\\ALFANET"),
-    "database": os.getenv("SQL_DATABASE", "DISTRIWALTERP"),
+    "server": os.getenv("SQL_SERVER", ""),
+    "database": os.getenv("SQL_DATABASE", ""),
     "user": os.getenv("SQL_USER"),
     "password": os.getenv("SQL_PASSWORD"),
     "driver": os.getenv("SQL_DRIVER", "SQL Server Native Client 10.0"),

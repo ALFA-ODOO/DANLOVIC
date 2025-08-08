@@ -1,8 +1,8 @@
 import os
 
 # Configuration for connecting to Odoo
-url = os.getenv("ODOO_URL", "https://danlovic.odoo.com")
-db = os.getenv("ODOO_DB", "danlovic")
+url = os.getenv("ODOO_URL", "")
+db = os.getenv("ODOO_DB", "")
 username = os.getenv("ODOO_USERNAME")
 password = os.getenv("ODOO_PASSWORD")
 

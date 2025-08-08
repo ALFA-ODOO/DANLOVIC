@@ -5,6 +5,7 @@ import xmlrpc.client
 import pandas as pd
 import os
 
+
 from odoo_config import url, db, username, password
 from sqlserver_config import sql_server
 
@@ -73,7 +74,7 @@ for row in rows:
     tipo_doc_odoo = dict_tipos_doc.get(doc_tipo)
     afip_id = dict_afip_responsabilidad.get(iva)
     vat = doc_num if doc_tipo == "1" else ""
-    link_customer = f"https://alfanet.com.ar/ac/autologin_odoo/{codigo}/94/customer"
+    link_customer =  f""  # f"https://alfanet.com.ar/ac/autologin_odoo/{codigo}/94/customer"--ESTO LO USA EL TREBOL, LINK PARA DESCARGAR LISTA CREO
 
     vals_partner = {
         'name': razon_social,
@@ -128,7 +129,16 @@ sql_conn.close()
 
 # Guardar errores
 if errores:
-    pd.DataFrame(errores).to_csv("C:\\MIGRACION_ODOO\\clientes_errores.csv", index=False)
-    print("\n⚠️ Algunos registros fallaron. Revisá: C:\MIGRACION_ODOO\clientes_errores.csv")
+
+    # Crear la carpeta si no existe
+    ruta_directorio = "C:\\MIGRACION_ODOO"
+    os.makedirs(ruta_directorio, exist_ok=True)
+
+    # Definir la ruta del archivo de salida
+    archivo_errores = os.path.join(ruta_directorio, "clientes_errores.csv")
+
+    # Guardar el CSV
+    pd.DataFrame(errores).to_csv(archivo_errores, index=False)
+
 
 print("\n✅ Actualización de clientes finalizada.")
